@@ -1,192 +1,161 @@
-# :test_tube: Prueba Técnica – Tablero Kanban Colaborativo en Tiempo Real
+# useTeam PT - Tablero Kanban colaborativo en tiempo real
 
-## :dart: Objetivo
+Este repositorio contiene el resultado de la prueba tecnica: una aplicacion tipo Trello con tablero Kanban, colaboracion en tiempo real y exportacion de backlog mediante n8n. El proyecto esta dividido en dos aplicaciones independientes:
 
-Desarrollar una aplicación tipo **Trello** que permita la gestión de tareas mediante un **tablero Kanban** con soporte para **colaboración en tiempo real**. El sistema debe incluir columnas personalizables, tarjetas movibles y funcionalidad de drag & drop fluida.
+- `frontend/`: React + Vite + Zustand + Socket.io client.
+- `backend/`: NestJS + MongoDB + Socket.io server + integracion con n8n.
 
----
+## Arquitectura general
 
-## :gear: Tecnologías Requeridas
+- El frontend sirve la interfaz con Vite, maneja drag & drop con `@dnd-kit` y consume la API REST y los eventos web socket.
+- El backend expone endpoints REST, websockets con Socket.io y orquesta la exportacion del backlog.
+- MongoDB almacena usuarios, tableros, columnas y tarjetas.
+- n8n recibe la peticion de exportacion y envia el CSV por correo.
 
-### Frontend
+## Requisitos previos
 
-- **React.js** para la construcción de la interfaz.
-- Implementación de **drag & drop** para mover tarjetas entre columnas.
+- Node.js >= 20.x (desarrollado con Node 20).
+- pnpm >= 9 (el repositorio incluye `pnpm-lock.yaml` en frontend y backend).
+- MongoDB (Atlas o instancia local accesible desde el backend).
+- Docker (opcional) para levantar n8n rapidamente.
+- Puertos disponibles: 3000 (API y websockets), 5173 (frontend), 5678 (n8n).
+
+## Variables de entorno
+
+El archivo `.env.example` en la raiz actua como plantilla. Crea los archivos reales antes de ejecutar los servicios:
+
+### Backend (`backend/.env`)
+
+```env
+PORT=3000
+MONGO_URI=mongodb://localhost:27017/useTeamPT
+MONGO_DB_NAME=useTeamPT
+JWT_SECRET=cambia_este_valor
+JWT_EXPIRES_IN=1h
+N8N_WEBHOOK_URL=http://localhost:5678/webhook/export-backlog
+```
+
+- `MONGO_URI` puede apuntar a MongoDB Atlas; ajusta parametros TLS si es necesario.
+- `N8N_WEBHOOK_URL` debe coincidir con el webhook que expone tu flujo en n8n.
+
+### Frontend (`frontend/.env`)
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+- Si el backend corre en otro host o puerto, actualiza este valor para que el cliente apunte al lugar correcto.
+
+> Tip: puedes copiar `.env.example` a `backend/.env` y `frontend/.env` y luego eliminar las claves que no apliquen a cada servicio.
+
+## Instalacion de dependencias
+
+Instala dependencias en cada proyecto por separado porque no comparten `node_modules`:
+
+```bash
+cd backend
+pnpm install
+
+cd ../frontend
+pnpm install
+```
+
+Tambien puedes usar npm o yarn, pero pnpm es lo recomendado para respetar los lockfiles.
+
+## Ejecucion local
+
+1. Asegurate de que MongoDB este disponible (local, Docker o Atlas).
+2. **Backend (NestJS):**
+
+   ```bash
+   cd backend
+   pnpm start:dev
+   ```
+
+   - API disponible en `http://localhost:3000/api`.
+   - Websockets disponibles en `ws://localhost:3000`.
+   - El servidor usa `NODE_OPTIONS=--openssl-legacy-provider` en desarrollo para compatibilidad con algunas dependencias.
+
+3. **Frontend (React + Vite):**
+
+   ```bash
+   cd frontend
+   pnpm dev
+   ```
+
+   - UI disponible en `http://localhost:5173`.
+
+Levanta cada servicio en terminales diferentes. Los cambios se recargan automaticamente gracias a los modos watch de Vite y Nest.
+
+### Flujos funcionales basicos
+
+- `POST /api/auth/register`: crea usuarios (body `{"name": "...", "email": "...", "password": "..."}`).
+- `POST /api/auth/login`: devuelve JWT y datos del usuario.
+- `GET /api/boards/:userId`: lista tableros del usuario.
+- `GET /api/boards/detail/:boardId`: devuelve columnas, tarjetas y comentarios.
+- `POST /api/boards/:userId`: crea un tablero. El body sigue el DTO `CreateBoardDto`.
+- `POST /api/boards/add-member/:boardId/:userId`: agrega miembros con rol `editor` o `viewer`.
+- Eventos Socket.io: los clientes deben emitir `joinBoard`, `cardCreated`, `cardMoved` y `commentAdded` para compartir eventos en tiempo real.
+
+### Exportacion de backlog
+
+- Endpoint: `POST /api/export/backlog` con body `{"boardId": "...", "email": "destino@dominio.com"}`.
+- El backend valida el tablero y dispara `N8N_WEBHOOK_URL` con `boardId` y `email`.
+- Asegurate de que `N8N_WEBHOOK_URL` responda con un estado exitoso (2xx) para marcar la solicitud como aceptada.
+
+## Automatizacion con n8n
+
+1. Levanta n8n (Docker recomendado):
+
+   ```bash
+   docker run -it --rm \
+     --name n8n \
+     -p 5678:5678 \
+     -v ~/.n8n:/home/node/.n8n \
+     n8nio/n8n:latest
+   ```
+
+2. En la UI (http://localhost:5678) crea o importa un flujo que:
+   - Exponga un webhook coincidente con `N8N_WEBHOOK_URL`.
+   - Consulte la API (`GET /api/boards/detail/:boardId`) para obtener el backlog.
+   - Transforme la informacion a CSV (id, titulo, descripcion, columna, fecha de creacion).
+   - Envie el CSV por correo al destinatario.
+3. Exporta el flujo y guardalo en `n8n/` si quieres versionarlo junto con el proyecto.
+
+Si ejecutas n8n detras de un tunnel o HTTPS, recuerda actualizar `N8N_WEBHOOK_URL`.
+
+## Scripts utiles
 
 ### Backend
 
-- **NestJS** con soporte de **WebSocket** para simular la colaboración en tiempo real.
-- Uso de **MongoDB** para el almacenamiento de datos.
-- Implementación de **Socket.io** para comunicación bidireccional.
-- **Notificaciones en tiempo real** para reflejar los cambios realizados por otros usuarios.
+- `pnpm start:dev`: modo desarrollo con recarga.
+- `pnpm start:prod`: ejecuta la build ya compilada.
+- `pnpm build`: compila a `dist/`.
+- `pnpm test`, `pnpm test:watch`, `pnpm test:cov`: pruebas unitarias.
+- `pnpm lint`: ejecuta ESLint.
+- `pnpm format`: formatea con Prettier.
 
----
+### Frontend
 
-## :mailbox: Funcionalidad Adicional Requerida
+- `pnpm dev`: servidor de desarrollo.
+- `pnpm build`: build de produccion en `dist/`.
+- `pnpm preview`: previsualiza la build.
+- `pnpm lint`: linting.
 
-### Exportación de Backlog vía Email en CSV
-
-Implementar un sistema de exportación automatizada del backlog del tablero Kanban utilizando **N8N** para generar flujos de trabajo automatizados.
-
-#### :gear: Tecnologías Adicionales
-
-- **N8N** para automatización de flujos de trabajo
-- **Webhooks** para comunicación entre sistemas
-- **CSV Generation** para estructuración de datos
-- **Email Service** para envío de reportes
-
-#### :dart: Requisitos de la Funcionalidad
-
-1. **Trigger desde Frontend**: Botón de exportación en la interfaz del tablero
-2. **Endpoint de Exportación**: API en NestJS que dispare el flujo N8N
-3. **Flujo N8N Automatizado**:
-   - Extracción de datos del tablero Kanban
-   - Estructuración de datos en formato CSV
-   - Envío automático por email
-4. **Configuración de Exportación**:
-   - Email destino configurable
-   - Selección de campos a exportar (Opcional)
-5. **Notificaciones de Estado**:
-   - Confirmación de solicitud de exportación
-   - Notificación de envío exitoso/fallido
-
-#### :file_folder: Estructura del CSV de Exportación
-
-El archivo CSV exportado debe incluir:
-
-- **ID de tarea** (identificador único)
-- **Título** (nombre de la tarea)
-- **Descripción** (detalles de la tarea)
-- **Columna** (posición actual en el tablero)
-- **Fecha de creación** (timestamp de creación)
-
-#### :arrow_forward: Flujo de Trabajo
-
-```
-[Frontend] → [NestJS API] → [N8N Webhook] → [Data Extraction] → [CSV Generation] → [Email Delivery] → [User Notification]
-```
-
-1. Usuario hace clic en "Exportar Backlog"
-2. Frontend envía solicitud a endpoint `/api/export/backlog`
-3. NestJS dispara webhook a N8N
-4. N8N extrae datos del tablero Kanban
-5. N8N estructura datos en formato CSV
-6. N8N envía email con archivo CSV adjunto
-7. Sistema notifica al usuario el estado de la exportación
-
----
-
-## :package: Forma de Entrega
-
-### :fork_and_knife: Fork del Repositorio
-
-1. **Fork** este repositorio a tu cuenta de GitHub
-2. **Clona** tu fork localmente
-3. **Desarrolla** la solución completa en tu fork
-4. **Sube** todos los cambios a tu repositorio
-
-### :file_folder: Estructura de Archivos Requerida
+## Estructura del repositorio
 
 ```
 useTeam-PT/
-├── README.md
-├── .env.example
-├── frontend/
-│   ├── package.json
-│   ├── src/
-│   └── ...
-├── backend/
-│   ├── package.json
-│   ├── src/
-│   └── ...
-├── n8n/
-│   ├── workflow.json
-│   └── setup-instructions.md
-└── docker-compose.yml (Opcional)
+├── backend/        # API NestJS y websockets
+├── frontend/       # UI React, Vite y Socket.io client
+├── .env.example    # variables compartidas como referencia
+└── n8n/            # espacio para workflows de exportacion
 ```
 
-### :gear: Archivos de Configuración
+## Checklist para la entrega
 
-#### `.env.example`
+- Verifica que backend y frontend se ejecuten sin errores y que el login/kanban funcionen extremo a extremo.
+- Prueba el flujo de exportacion disparando `/api/export/backlog` contra n8n.
+- Actualiza este README si hay cambios relevantes.
+- Cuando la entrega este lista, invita a los evaluadores provistos y evita commits posteriores.
 
-Debe incluir todas las variables de entorno necesarias:
-
-```env examle
-# Database
-MONGODB_URI=mongodb://localhost:27017/kanban-board
-
-# Backend
-PORT=3000
-N8N_WEBHOOK_URL=http://localhost:5678/webhook/kanban-export
-
-# Frontend
-REACT_APP_API_URL=http://localhost:3000/api
-REACT_APP_WS_URL=ws://localhost:3000
-```
-
-#### `n8n/workflow.json`
-
-Archivo JSON del flujo de N8N para exportación de backlog.
-
-#### `n8n/setup-instructions.md`
-
-Instrucciones detalladas para configurar y ejecutar el flujo N8N.
-
-### :whale: Docker Compose (Opcional)
-
-Incluir archivo `docker-compose.yml` con:
-
-- Servicio de MongoDB
-- Servicio de N8N (versión 1.106.3)
-- Configuración de redes y volúmenes
-
-### :rocket: Comando para N8N
-
-Comando para levantar una instancia local de N8N
-
-```bash
-docker run -it --rm \
-  --name n8n \
-  -p 5678:5678 \
-  -v ~/.n8n:/home/node/.n8n \
-  n8nio/n8n:latest
-```
-
-### :memo: Documentación Adicional
-
-- **README.md** actualizado con instrucciones de instalación y ejecución
-- **Comentarios en código** explicando la lógica compleja
-
-### :lock: Finalización de la Prueba
-
-Una vez finalizada la implementación:
-
-1. **Invitar** a los siguientes usuarios como colaboradores al repositorio:
-
-   - `rodriguezibrahin3@gmail.com`
-   - `jonnahuel78@gmail.com`
-   - `administracion@useteam.io`
-
-2. **NO realizar más commits** después de invitar a los usuarios
-
----
-
-## :brain: Evaluación
-
-Durante el desarrollo de esta prueba se evaluarán:
-
-- **Pensamiento asincrónico** y manejo de procesos en tiempo real.
-- **Lógica compleja en el frontend**, especialmente en la interacción y estado compartido.
-- Gestión adecuada de **eventos y sincronización** entre múltiples usuarios.
-
----
-
-## :pushpin: Recomendaciones
-
-- Enfócate en una buena experiencia de usuario (UX).
-- Prioriza un código limpio, modular y mantenible.
-- Usa comentarios breves y precisos donde la lógica sea compleja.
-
----
-
-¡Buena suerte! :rocket:

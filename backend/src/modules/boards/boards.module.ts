@@ -7,16 +7,19 @@ import { CreateBoardUseCase } from './application/use-cases/create-board.use-cas
 import { CardRepositoryImpl } from '../cards/infrastructure/card.repository.impl';
 import { UsersModule } from '../users/users.module';
 import { UserRepositoryImpl } from '../users/infrastructure/user.repository.impl';
+import { ExportController } from './infrastructure/export.controller';
+import { ExportBacklogUseCase } from './application/use-cases/export-backlog.use-case';
 
 @Module({
   imports: [MongodbModule, UsersModule],
-  controllers: [BoardsController],
+  controllers: [BoardsController, ExportController],
   providers: [
     BoardRepositoryImpl,
     ColumnRepositoryImpl,
     CardRepositoryImpl,
     CreateBoardUseCase,
     UserRepositoryImpl,
+    ExportBacklogUseCase,
   ],
 })
 export class BoardsModule {}
