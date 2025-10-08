@@ -28,17 +28,21 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
+import { exportApi } from "../services/export.api";
+import { useAuthStore } from "@/modules/auth/store/useAuthStore";
 
 export function Board () {
-  const { boardDetail, fetchBoardDetail, createCard, moveCard, addMember } = useBoard();
-  const boardId = boardDetail?.id;
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
-  const hasLoadedUsersRef = useRef(false);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+
+  const { user } = useAuthStore();
+  const { boardDetail, fetchBoardDetail, createCard, moveCard, addMember } = useBoard();
+  const boardId = boardDetail?.id;
+  const hasLoadedUsersRef = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -168,7 +172,27 @@ export function Board () {
                         Generate a copy of this board to share it outside the workspace.
                       </p>
                     </div>
-                    <Button variant="outline" className="w-full sm:w-auto" disabled type="button">
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      type="button"
+                      onClick={ async () => {
+                        if (!boardId) return toast.error("No board selected");
+
+                        try {
+                          toast.loading("Solicitando exportación...");
+                          // Puedes cambiar el email por el del usuario logueado
+                          const email = user?.email ?? "";
+                          const res = await exportApi.exportBacklog(boardId, email);
+                          toast.success(res.message ?? "Exportación iniciada correctamente");
+                        } catch (err) {
+                          console.error("Error exporting backlog:", err);
+                          toast.error("No se pudo iniciar la exportación");
+                        } finally {
+                          toast.dismiss();
+                        }
+                      } }
+                    >
                       Export board
                     </Button>
                   </div>

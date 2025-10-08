@@ -1,0 +1,129 @@
+{
+  "name": "Export-Backlog-CSV",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "export-backlog",
+        "options": {
+          "responseData": "{ \"status\": \"Webhook recibido correctamente\" }"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3193c96b-b308-48d8-aeb6-57bce4916bca",
+      "name": "Webhook",
+      "webhookId": "07c0c0e6-3019-4ec8-a603-5ded37c6b2ca"
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:3000/api/boards/detail/{{$json[\"body\"][\"boardId\"]}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "f20346e0-860f-4fdb-b5b9-f210e6139017",
+      "name": "Get Board Detail"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tomamos el primer item de entrada (el del GET anterior)\nconst input = $input.first();\nconst board = input.json;\nconst boardData = items[0].json;\nconst rows = [];\n\n// Recorremos columnas y cards\nfor (const column of board.columns ?? []) {\n  for (const card of column.cards ?? []) {\n    rows.push({\n      id: card.id,\n      title: card.title,\n      description: card.description || \"\",\n      column: column.name,\n      createdAt: card.createdAt,\n    });\n  }\n}\n\n// Construimos el CSV\nconst header = \"ID,Título,Descripción,Columna,Fecha de creación\\n\";\nconst body = rows\n  .map(\n    (r) =>\n      `${r.id},\"${r.title.replace(/\"/g, '\"\"')}\",\"${r.description.replace(/\"/g, '\"\"')}\",${r.column},${r.createdAt}`\n  )\n  .join(\"\\n\");\n\nconst csv = header + body;\n\n// Convertimos a base64 para adjuntar\nconst csvBase64 = Buffer.from(csv, \"utf8\").toString(\"base64\");\n\n// Retornamos con JSON + binario\nreturn {\n  json: {\n    email: boardData.createdBy.email ?? \"fallback@example.com\",\n    filename: `backlog_${board.name}.csv`,\n  },\n  binary: {\n    data: {\n      data: csvBase64,\n      mimeType: \"text/csv\",\n      fileName: `backlog_${board.name}.csv`,\n    },\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        0
+      ],
+      "id": "57d1acb7-088c-442b-9edd-490caf516a93",
+      "name": "Generate CSV"
+    },
+    {
+      "parameters": {
+        "fromEmail": "gabinomorales1212@hotmail.com",
+        "toEmail": "={{$json[\"email\"]}}",
+        "subject": "=Backlog Export - {{$json[\"filename\"]}}",
+        "html": "<p>¡Hola! 👋</p>\n<p>Adjunto encontrarás el archivo CSV con el backlog exportado del tablero.</p>\n<p>Saludos,<br>Gabino</p>",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        544,
+        0
+      ],
+      "id": "9090a866-a1c7-45e6-92a0-39cc11f13a2f",
+      "name": "Send email",
+      "webhookId": "5b66f3d9-3966-4a48-9680-c4c9b4efbc12",
+      "credentials": {
+        "smtp": {
+          "id": "gRSw7rGqQ2kRzxlK",
+          "name": "Hotmail SMTP"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Board Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate CSV": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Board Detail": {
+      "main": [
+        [
+          {
+            "node": "Generate CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e0c0d66c-f9a7-46ab-b593-ef2840f77f07",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0f5ecc942b57f218b64bf9341cdbc0e3be491d21b944cefb1b6a697cb2a1d273"
+  },
+  "id": "JPQnMnci8VtkjlFQ",
+  "tags": []
+}
